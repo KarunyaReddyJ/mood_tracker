@@ -4,6 +4,7 @@ import { useState } from 'react'
 import * as XLSX from 'xlsx'
 import DataStore from '@/utils/DataStore'
 import constants from '@/utils/constants'
+
 export default function MoodForm({ onSubmit }) {
   const [mood, setMood] = useState('')
   const [tags, setTags] = useState('')
@@ -14,7 +15,7 @@ export default function MoodForm({ onSubmit }) {
     e.preventDefault()
     const data = {
       mood: parseInt(mood),
-      tags: tags.split(',').map(tag => tag.trim()),
+      tags: tags.split(',').map(tag => tag.trim().toLowerCase()),
       description,
       time: new Date().toISOString()
     }
@@ -28,39 +29,48 @@ export default function MoodForm({ onSubmit }) {
     setTimeout(() => setSubmitted(false), 2000)
   }
 
-  const handleXLSXUpload = async (e) => {
-  const file = e.target.files[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = async (event) => {
-    const data = new Uint8Array(event.target.result)
-    const workbook = XLSX.read(data, { type: 'array' })
-    const sheetName = workbook.SheetNames[0]
-    const worksheet = workbook.Sheets[sheetName]
-    const json = XLSX.utils.sheet_to_json(worksheet)
-
-    const store = new DataStore(constants.backend)
-    const existing = await store.get('entries', '[]')
-    const parsed = JSON.parse(existing || '[]')
-
-    const newEntries = json.map((row) => ({
-      mood: parseInt(row.mood),
-      tags: (row.tags || '').split(',').map(t => t.trim()),
-      description: row.description || '',
-      time: row.time || new Date().toISOString()
-    }))
-
-    const updated = [...parsed, ...newEntries]
-    await store.set('entries', JSON.stringify(updated))
-
-    console.log(`✅ ${newEntries.length} mood entries added`)
-    alert(`✅ ${newEntries.length} entries uploaded successfully`)
+  const parseTags = (rawTags) => {
+    console.log('raws',rawTags)
+    if (typeof rawTags === 'string') {
+      return rawTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)
+    } else if (Array.isArray(rawTags)) {
+      return rawTags.map(t => String(t).trim().toLowerCase()).filter(Boolean)
+    }
+    return []
   }
 
-  reader.readAsArrayBuffer(file)
-}
+  const handleXLSXUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
 
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      const data = new Uint8Array(event.target.result)
+      const workbook = XLSX.read(data, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      const worksheet = workbook.Sheets[sheetName]
+      const json = XLSX.utils.sheet_to_json(worksheet)
+
+      const store = new DataStore(constants.backend)
+      const existing = await store.get('entries', '[]')
+      const parsed = JSON.parse(existing || '[]')
+
+      const newEntries = json.map((row) => ({
+        mood: parseInt(row.mood),
+        tags: parseTags(row.tags),
+        description: row.description || '',
+        time: row.time || new Date().toISOString()
+      }))
+
+      const updated = [...parsed, ...newEntries]
+      await store.set('entries', JSON.stringify(updated))
+
+      console.log(`✅ ${newEntries.length} mood entries added`)
+      alert(`✅ ${newEntries.length} entries uploaded successfully`)
+    }
+
+    reader.readAsArrayBuffer(file)
+  }
 
   return (
     <div className="max-w-lg mx-auto mt-10 p-6 bg-white rounded-2xl shadow-lg space-y-8 border border-gray-200">
@@ -131,7 +141,9 @@ export default function MoodForm({ onSubmit }) {
           onChange={handleXLSXUpload}
           className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:border-0 file:rounded-lg file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
         />
-        <p className="text-xs text-gray-500 mt-1">Expected columns: <code>mood</code>, <code>tags</code>, <code>description</code>, (optional: <code>time</code>)</p>
+        <p className="text-xs text-gray-500 mt-1">
+          Expected columns: <code>mood</code>, <code>tags</code>, <code>description</code>, (optional: <code>time</code>)
+        </p>
       </div>
     </div>
   )
